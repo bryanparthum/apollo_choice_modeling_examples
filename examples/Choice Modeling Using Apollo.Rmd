@@ -11,6 +11,7 @@ output:
     depth: 2
     number_sections: true
     code_folding:  hide
+    theme: paper
 editor_options: 
   chunk_output_type: console
 ---
