@@ -25,7 +25,7 @@ library(apollo)
 
 This document walks a user through estimation of a discrete choice model using the [Apollo](http://www.apollochoicemodelling.com/index.html) package in [Rstudio](https://www.rstudio.com/). The example code is drawn directly from the helpful list of [examples](http://www.apollochoicemodelling.com/examples.html) found on the Apollo website.
 
-# A Simple Multinomial Logit (MNL) model on Stated Preference Data
+# Simple Multinomial Logit (MNL) model on mode choice SP data
 
 Start by initializing the code and setting up core controls.
 
@@ -43,7 +43,7 @@ apollo_control = list(
 )
 ```
 
-Next, load the example data and subset it to only include the stated preference data (SP==1). For a dictionary of available data, use `? apollo_modeChoiceData`. If necessary transform the data to be readable by Apollo. 
+Next, load the example data and subset it to only include the stated preference data (SP==1). For a dictionary of available data, use `? apollo_modeChoiceData`. If necessary, transform the data to be readable by Apollo. 
 
 ```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
 ## load data
@@ -91,25 +91,25 @@ Define the model and the likelihood function.
 apollo_probabilities=function(apollo_beta, 
                               apollo_inputs, 
                               functionality="estimate"){
-    
+  
   ## attach inputs and detach after function exit
   apollo_attach(apollo_beta, apollo_inputs)
   on.exit(apollo_detach(apollo_beta, apollo_inputs))
-
+  
   ## create list of probabilities P
   P = list()
   
   ## list of utilities: these must use the same names as in mnl_settings, order is irrelevant
   V = list()
-  V[["car"]]  = asc_car  + b_tt_car  * time_car                           + b_cost * cost_car
-  V[["bus"]]  = asc_bus  + b_tt_bus  * time_bus  + b_access * access_bus  + b_cost * cost_bus 
-  V[["air"]]  = asc_air  + b_tt_air  * time_air  + b_access * access_air  + b_cost * cost_air    + b_no_frills * ( service_air == 1 )  + b_wifi * ( service_air == 2 )  + b_food * ( service_air == 3 )
-  V[["rail"]] = asc_rail + b_tt_rail * time_rail + b_access * access_rail + b_cost * cost_rail   + b_no_frills * ( service_rail == 1 ) + b_wifi * ( service_rail == 2 ) + b_food * ( service_rail == 3 )
+  V[["car"]]  = asc_car + b_tt_car * time_car + b_cost * cost_car
+  V[["bus"]]  = asc_bus + b_tt_bus * time_bus + b_access * access_bus + b_cost * cost_bus
+  V[["air"]]  = asc_air + b_tt_air * time_air + b_access * access_air + b_cost * cost_air + b_no_frills * ( service_air == 1 ) + b_wifi * ( service_air == 2 ) + b_food * ( service_air == 3 )
+  V[["rail"]] = asc_rail + b_tt_rail * time_rail + b_access * access_rail + b_cost * cost_rail + b_no_frills * ( service_rail == 1 ) + b_wifi * ( service_rail == 2 ) + b_food * ( service_rail == 3 )
   
   ## define settings for MNL model component
   mnl_settings = list(
-    alternatives  = c(car=1, bus=2, air=3, rail=4), 
-    avail         = list(car=av_car, bus=av_bus, air=av_air, rail=av_rail), 
+    alternatives  = c(car = 1, bus = 2, air = 3, rail = 4), 
+    avail         = list(car = av_car, bus = av_bus, air = av_air, rail = av_rail), 
     choiceVar     = choice,
     utilities     = V
   )
@@ -130,13 +130,167 @@ We are now ready to estimate the model.
 
 ```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
 ## estimate
-model = apollo_estimate(apollo_beta, apollo_fixed, apollo_probabilities, apollo_inputs)
+mnl = apollo_estimate(apollo_beta, apollo_fixed, apollo_probabilities, apollo_inputs)
 ```
 
 Explore model results. 
 ```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
 ## model outputs
-apollo_modelOutput(model)
+apollo_modelOutput(mnl)
+
+## optional: save model output to output directory
+# apollo_saveOutput(model)
+```
+
+# Mixed logit model (MXL) on Swiss route choice data, correlated Lognormals in utility space
+
+This model is significantly more computationally intensive than the previous simple model. To speed up the estimation, first check to see how many cores are available on your machine. The number of cores chosen in this example is `14` using the option `nCores = 14`. Initialize the code and set up core controls. 
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+
+## initialize code
+apollo_initialise()
+
+## set core controls
+apollo_control = list(
+  modelName       = "MXL_preference_space_correlated",
+  modelDescr      = "Mixed logit model on Swiss route choice data, correlated Lognormals in utility space",
+  indivID         = "ID",  
+  mixing          = TRUE, 
+  nCores          =  14,
+  outputDirectory = "output"
+)
+```
+
+Next, load the example data. For a dictionary of available data, use `? apollo_modeChoiceData`. If necessary, transform the data to be readable by Apollo. 
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## load data
+database = apollo_swissRouteChoiceData
+```
+
+Determine the attributes of the model and define the priors on the model parameters (and their standard deviations). If none are available, a prior of `0` should be used. Define any parameters (using the names of the parameters) that should be fixed at their starting value.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## vector of parameters, including any that are kept fixed in estimation
+apollo_beta = c(
+  mu_log_b_tt       = -3,
+  sigma_log_b_tt    =  0,
+  mu_log_b_tc       = -3,
+  sigma_log_b_tt_tc =  0,
+  sigma_log_b_tc    =  0,
+  mu_log_b_hw       = -3,
+  sigma_log_b_tt_hw =  0,
+  sigma_log_b_tc_hw =  0,
+  sigma_log_b_hw    =  0,
+  mu_log_b_ch       = -3,
+  sigma_log_b_tt_ch =  0,
+  sigma_log_b_tc_ch =  0,
+  sigma_log_b_hw_ch =  0,
+  sigma_log_b_ch    =  0
+)
+
+## vector with names (in quotes) of parameters to be kept fixed at their starting value in params, use apollo_beta_fixed = c() if none
+apollo_fixed = c()
+
+## if they exist, read in starting values for at least some parameters from existing model output file
+# apollo_beta=apollo_readBeta(apollo_beta, apollo_fixed, "MXL_preference_space_correlated", overwriteFixed = FALSE)
+```
+
+Define random components.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+
+apollo_draws = list(
+  interDrawsType = "halton",
+  interNDraws    = 500,
+  interUnifDraws = c(),
+  interNormDraws = c("draws_tt","draws_tc","draws_hw","draws_ch"),
+  intraDrawsType = "halton",
+  intraNDraws    = 0,
+  intraUnifDraws = c(),
+  intraNormDraws = c()
+)
+```
+
+Create random parameters.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+
+## random parameters
+apollo_randCoeff = function(apollo_beta, apollo_inputs){
+  randcoeff = list()
+
+  randcoeff[["b_tt"]] = -exp( mu_log_b_tt  + sigma_log_b_tt * draws_tt )
+  randcoeff[["b_tc"]] = -exp( mu_log_b_tc  + sigma_log_b_tt_tc * draws_tt + sigma_log_b_tc * draws_tc )
+  randcoeff[["b_hw"]] = -exp( mu_log_b_hw  + sigma_log_b_tt_hw * draws_tt + sigma_log_b_tc_hw * draws_tc + sigma_log_b_hw * draws_hw )
+  randcoeff[["b_ch"]] = -exp( mu_log_b_ch  + sigma_log_b_tt_ch * draws_tt + sigma_log_b_tc_ch * draws_tc + sigma_log_b_hw_ch * draws_hw + sigma_log_b_ch * draws_ch )
+
+  return(randcoeff)
+}
+```
+
+Group and validate the inputs of the model.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## group and validate
+apollo_inputs = apollo_validateInputs()
+```
+
+Define the model and the likelihood function.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## likelihood function
+apollo_probabilities=function(apollo_beta, apollo_inputs, functionality="estimate"){
+  
+  ## function initialization: do not change the following three commands
+  ## attach inputs and detach after function exit
+  apollo_attach(apollo_beta, apollo_inputs)
+  on.exit(apollo_detach(apollo_beta, apollo_inputs))
+
+  ## create list of probabilities P
+  P = list()
+  
+  ## list of utilities: these must use the same names as in mnl_settings, order is irrelevant
+  V = list()
+  V[["alt1"]] = b_tt * tt1 + b_tc * tc1 + b_hw * hw1 + b_ch * ch1
+  V[["alt2"]] = b_tt * tt2 + b_tc * tc2 + b_hw * hw2 + b_ch * ch2
+  
+  ## define settings for MNL model component
+  mnl_settings = list(
+    alternatives  = c(alt1=1, alt2=2),
+    avail         = list(alt1=1, alt2=1),
+    choiceVar     = choice,
+    utilities     = V
+  )
+  
+  ## compute probabilities using MNL model
+  P[["model"]] = apollo_mnl(mnl_settings, functionality)
+  
+  ## take product across observation for same individual
+  P = apollo_panelProd(P, apollo_inputs, functionality)
+  
+  ## average across inter-individual draws
+  P = apollo_avgInterDraws(P, apollo_inputs, functionality)
+  
+  ## prepare and return outputs of function
+  P = apollo_prepareProb(P, apollo_inputs, functionality)
+  return(P)
+}
+
+```
+
+We are now ready to estimate the model.
+
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## estimate
+mxl = apollo_estimate(apollo_beta, apollo_fixed,
+                        apollo_probabilities, apollo_inputs)
+```
+
+Explore model results. 
+```{r  include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=TRUE, class.source="fold-show"}
+## model outputs
+apollo_modelOutput(mxl)
 
 ## optional: save model output to output directory
 # apollo_saveOutput(model)
